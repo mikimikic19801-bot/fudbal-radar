@@ -16,6 +16,9 @@
             --drop: #ef4444; 
             --text: #f9fafb;
             --text-muted: #9ca3af;
+            --soccer-color: #3b82f6;
+            --basket-color: #f97316;
+            --handball-color: #a855f7;
         }
 
         body {
@@ -93,7 +96,6 @@
             font-size: 13px; font-weight: bold; color: var(--text-muted);
         }
 
-        /* Prekidač */
         .switch {
             position: relative; display: inline-block; width: 50px; height: 26px;
         }
@@ -109,11 +111,26 @@
         input:checked + .slider { background-color: var(--accent); }
         input:checked + .slider:before { transform: translateX(24px); }
 
-        .section-title {
-            font-size: 11px; color: var(--text-muted);
-            text-transform: uppercase; letter-spacing: 2px;
-            margin-bottom: 12px; display: block; font-weight: 700;
+        .sport-group {
+            margin-bottom: 25px;
+            width: 100%;
         }
+
+        .sport-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 12px;
+            padding-left: 5px;
+        }
+
+        .sport-header.soccer { color: var(--soccer-color); }
+        .sport-header.basketball { color: var(--basket-color); }
+        .sport-header.handball { color: var(--handball-color); }
 
         .match-card {
             background: var(--card);
@@ -175,8 +192,8 @@
     </header>
 
     <div class="action-card">
-        <button onclick="fetchLiveMatches()">
-            Ručno skeniranje 🔄
+        <button onclick="fetchAllSports()">
+            Skeniraj sve terene 🔄
         </button>
         <div class="auto-toggle">
             <span>Automatsko skeniranje (na 5 min)</span>
@@ -187,11 +204,10 @@
         </div>
     </div>
 
-    <span class="section-title">Aktivni signali sa terena</span>
-    <div id="liveMatchesList">
+    <div id="radarMonitor">
         <div style="text-align: center; color: var(--text-muted); padding: 40px 20px;">
-            <p style="font-size: 15px; margin: 0 0 10px 0; font-weight: 600;">Sistem spreman.</p>
-            <p style="font-size: 13px; margin: 0; color: #6b7280;">Aktiviraj automatsko skeniranje kako bi pratio mečeve u pozadini.</p>
+            <p style="font-size: 15px; margin: 0 0 10px 0; font-weight: 600;">Satelit u pripravnosti.</p>
+            <p style="font-size: 13px; margin: 0; color: #6b7280;">Svi sportovi su povezani na tvoj API ključ.</p>
         </div>
     </div>
 </div>
@@ -199,13 +215,12 @@
 <script>
     const API_KEY = "f1cce1e4be71307c45a7a206e4a16495";
     let autoInterval = null;
-    let knownAlerts = new Set(); // Sprečava da ti ista utakmica svira 10 puta za redom
+    let knownAlerts = new Set();
 
     if ("Notification" in window) {
         Notification.requestPermission();
     }
 
-    // Funkcija za stvaranje čistog, elektronskog radarskog piska
     function playRadarSound() {
         try {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -213,7 +228,7 @@
             const gainNode = audioCtx.createGain();
 
             oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(1500, audioCtx.currentTime); // Visok ton
+            oscillator.frequency.setValueAtTime(1500, audioCtx.currentTime);
             oscillator.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.4);
 
             gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
@@ -225,22 +240,22 @@
             oscillator.start();
             oscillator.stop(audioCtx.currentTime + 0.4);
         } catch (e) {
-            console.log("Audio API blokiran dok ne napraviš interakciju.");
+            console.log("Audio blokiran.");
         }
     }
 
     function sendNotification(title, body, matchId) {
-        if (knownAlerts.has(matchId)) return; // Preskoči ako smo već poslali
+        if (knownAlerts.has(matchId)) return;
         knownAlerts.add(matchId);
 
-        playRadarSound(); // Sviraj zvuk na telefonu
+        playRadarSound();
 
         if (Notification.permission === "granted") {
             navigator.serviceWorker.ready.then(reg => {
                 reg.showNotification(title, {
                     body: body,
                     icon: "https://cdn-icons-png.flaticon.com/512/2619/2619245.png",
-                    vibrate: [500, 100, 500, 100, 500],
+                    vibrate: [500, 100, 500],
                     badge: "https://cdn-icons-png.flaticon.com/512/2619/2619245.png"
                 });
             });
@@ -250,52 +265,106 @@
     function toggleAuto() {
         const isChecked = document.getElementById('autoCheck').checked;
         if (isChecked) {
-            fetchLiveMatches();
-            autoInterval = setInterval(fetchLiveMatches, 300000); // 5 minuta (300.000 ms)
+            fetchAllSports();
+            autoInterval = setInterval(fetchAllSports, 300000);
         } else {
             clearInterval(autoInterval);
         }
     }
 
-    async function fetchLiveMatches() {
-        const listEl = document.getElementById('liveMatchesList');
+    async function fetchFromAPI(endpoint, host) {
+        const response = await fetch(`https://${host}/${endpoint}`, {
+            method: 'GET',
+            headers: {
+                'x-rapidapi-host': host,
+                'x-rapidapi-key': API_KEY
+            }
+        });
+        const data = await response.json();
+        return data.response || [];
+    }
+
+    async function fetchAllSports() {
+        const monitor = document.getElementById('radarMonitor');
         if (!document.getElementById('autoCheck').checked) {
-            listEl.innerHTML = '<p style="text-align: center; color: var(--accent); font-weight: 700; padding: 40px 0;">Skeniram satelitske podatke...</p>';
+            monitor.innerHTML = '<p style="text-align: center; color: var(--accent); font-weight: 700; padding: 40px 0;">Skeniram satelitske podatke za sve sportove...</p>';
         }
 
         try {
-            const response = await fetch('https://v3.football.api-sports.io/fixtures?live=all', {
-                method: 'GET',
-                headers: {
-                    'x-rapidapi-host': 'v3.football.api-sports.io',
-                    'x-rapidapi-key': API_KEY
-                }
-            });
+            // Paralelno povlačimo podatke za Fudbal, Košarku i Rukomet koristeći tvoje aktivne rute
+            const [soccerData, basketData, handballData] = await Promise.all([
+                fetchFromAPI('fixtures?live=all', 'v3.football.api-sports.io').catch(() => []),
+                fetchFromAPI('games?live=all', 'v1.basketball.api-sports.io').catch(() => []),
+                fetchFromAPI('games?live=all', 'v1.handball.api-sports.io').catch(() => [])
+            ]);
 
-            const data = await response.json();
-            const fixtures = data.response || [];
-
-            if (fixtures.length === 0) {
-                listEl.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px 0;">Trenutno nema aktivnih utakmica na radaru.</p>';
-                return;
-            }
-
-            analyzeMatches(fixtures);
+            renderAllResults(soccerData, basketData, handballData);
 
         } catch (error) {
             if (!document.getElementById('autoCheck').checked) {
-                listEl.innerHTML = '<p style="text-align: center; color: var(--drop); font-weight: 700; padding: 40px 0;">Smetnje na mreži. Proveri konekciju ili API limit.</p>';
+                monitor.innerHTML = '<p style="text-align: center; color: var(--drop); font-weight: 700; padding: 40px 0;">Greška pri skeniranju mreže.</p>';
             }
         }
     }
 
-    function analyzeMatches(fixtures) {
-        const listEl = document.getElementById('liveMatchesList');
-        listEl.innerHTML = '';
-        let alertsFound = 0;
+    function renderAllResults(soccer, basketball, handball) {
+        const monitor = document.getElementById('radarMonitor');
+        monitor.innerHTML = '';
+        let totalAlerts = 0;
 
+        // 1. FUDBAL SEKCIJA
+        const soccerAlerts = analyzeSoccer(soccer);
+        if (soccerAlerts.length > 0) {
+            totalAlerts += soccerAlerts.length;
+            const group = createSportGroup("Fudbal Radar", "soccer", "⚽");
+            soccerAlerts.forEach(card => group.appendChild(card));
+            monitor.appendChild(group);
+        }
+
+        // 2. KOŠARKA SEKCIJA
+        const basketAlerts = analyzeBasketball(basketball);
+        if (basketAlerts.length > 0) {
+            totalAlerts += basketAlerts.length;
+            const group = createSportGroup("Košarka Radar", "basketball", "🏀");
+            basketAlerts.forEach(card => group.appendChild(card));
+            monitor.appendChild(group);
+        }
+
+        // 3. RUKOMET SEKCIJA
+        const handballAlerts = analyzeHandball(handball);
+        if (handballAlerts.length > 0) {
+            totalAlerts += handballAlerts.length;
+            const group = createSportGroup("Rukomet Radar", "handball", "🤾");
+            handballAlerts.forEach(card => group.appendChild(card));
+            monitor.appendChild(group);
+        }
+
+        if (totalAlerts === 0) {
+            monitor.innerHTML = `
+                <div style="text-align: center; color: var(--text-muted); padding: 40px 20px;">
+                    <p style="font-size: 15px; margin: 0 0 10px 0; font-weight: 600;">Skeniranje završeno.</p>
+                    <p style="font-size: 13px; margin: 0; color: #6b7280;">Nema trenutno aktivnih signala koji zadovoljavaju algoritme.</p>
+                </div>
+            `;
+        }
+    }
+
+    function createSportGroup(title, className, emoji) {
+        const div = document.createElement('div');
+        div.className = 'sport-group';
+        div.innerHTML = `
+            <div class="sport-header ${className}">
+                <span>${emoji}</span> ${title}
+            </div>
+        `;
+        return div;
+    }
+
+    // ALGORITAM ZA FUDBAL
+    function analyzeSoccer(fixtures) {
+        const cards = [];
         fixtures.forEach(match => {
-            const matchId = match.fixture.id;
+            const matchId = "soc_" + match.fixture.id;
             const homeTeam = match.teams.home.name;
             const awayTeam = match.teams.away.name;
             const homeScore = match.goals.home;
@@ -306,49 +375,97 @@
             let isAlert = false;
             let alertReason = "";
 
-            // LOGIKA 1: Domaći favorit gubi na poluvremenu (Value preokret)
             if (elapsed >= 45 && elapsed <= 65 && awayScore > homeScore) {
                 isAlert = true;
-                alertReason = "🔥 RADAR SIGNAL: Domaćin gubi na poluvremenu! Uživo kvota raste.";
+                alertReason = "🔥 LIVE VALUE: Domaći favorit gubi na poluvremenu! Očekuje se pritisak.";
             }
-
-            // LOGIKA 2: Nerešeno u samom finišu (Juriš na gol u zadnjih 10 minuta)
             if (elapsed >= 80 && homeScore === awayScore) {
                 isAlert = true;
-                alertReason = "⚡ ALARM ZAVRŠNICE: Nerešeno u finišu meča! Veliki pritisak za gol.";
+                alertReason = "⚡ FINIŠ ALARM: Nerešeno u finišu meča! Velika šansa za kasni gol.";
             }
 
             if (isAlert) {
-                alertsFound++;
-                const card = document.createElement('div');
-                card.className = 'match-card';
-                card.innerHTML = `
-                    <div class="match-meta">
-                        <span>🏆 ${league}</span>
-                        <span class="live-badge"><span class="radar-pulse"></span>${elapsed}' min</span>
-                    </div>
-                    <div class="match-teams">
-                        <span class="team-name home">${homeTeam}</span>
-                        <span class="score-box">${homeScore}:${awayScore}</span>
-                        <span class="team-name away">${awayTeam}</span>
-                    </div>
-                    <div class="alert-box">${alertReason}</div>
-                `;
-                listEl.appendChild(card);
-
-                // Šalje notifikaciju sa jedinstvenim ID-jem meča
+                cards.push(createMatchCard(league, elapsed, homeTeam, awayTeam, `${homeScore}:${awayScore}`, alertReason));
                 sendNotification("Fudbal Radar Signal!", `${homeTeam} - ${awayTeam} (${elapsed}'). ${alertReason}`, matchId);
             }
         });
+        return cards;
+    }
 
-        if (alertsFound === 0) {
-            listEl.innerHTML = `
-                <div style="text-align: center; color: var(--text-muted); padding: 40px 20px;">
-                    <p style="font-size: 15px; margin: 0 0 10px 0; font-weight: 600;">Nema sumnjivih aktivnosti.</p>
-                    <p style="font-size: 13px; margin: 0; color: #6b7280;">Skenirano ${fixtures.length} utakmica, nijedna ne ispunjava uslove alarma.</p>
-                </div>
-            `;
-        }
+    // ALGORITAM ZA KOŠARKU
+    function analyzeBasketball(games) {
+        const cards = [];
+        games.forEach(game => {
+            const gameId = "bask_" + game.id;
+            const homeTeam = game.teams.home.name;
+            const awayTeam = game.teams.away.name;
+            const homeScore = game.scores.home.total;
+            const awayScore = game.scores.away.total;
+            const quarter = game.status.short; // Npr. Q3, Q4
+            const league = game.league.name;
+
+            let isAlert = false;
+            let alertReason = "";
+
+            // Košarkaški alarm: Izjednačena utakmica pred kraj četvrte četvrtine
+            if (quarter === "Q4" && Math.abs(homeScore - awayScore) <= 3) {
+                isAlert = true;
+                alertReason = "🏀 KOŠARKA LIVE: Drama u finišu meča! Razlika je samo 3 ili manje poena.";
+            }
+
+            if (isAlert) {
+                cards.push(createMatchCard(league, quarter, homeTeam, awayTeam, `${homeScore}:${awayScore}`, alertReason));
+                sendNotification("Košarka Radar Signal!", `${homeTeam} - ${awayTeam} (${quarter}). ${alertReason}`, gameId);
+            }
+        });
+        return cards;
+    }
+
+    // ALGORITAM ZA RUKOMET
+    function analyzeHandball(games) {
+        const cards = [];
+        games.forEach(game => {
+            const gameId = "hand_" + game.id;
+            const homeTeam = game.teams.home.name;
+            const awayTeam = game.teams.away.name;
+            const homeScore = game.scores.home;
+            const awayScore = game.scores.away;
+            const elapsed = game.status.short; // Npr. SH1, SH2 (drugo poluvreme)
+            const league = game.league.name;
+
+            let isAlert = false;
+            let alertReason = "";
+
+            // Rukometni alarm: autsajder vodi u drugom poluvremenu
+            if (elapsed === "SH2" && awayScore > homeScore) {
+                isAlert = true;
+                alertReason = "🤾 RUKOMET LIVE: Gost vodi u drugom poluvremenu! Očekuje se reakcija domaćina.";
+            }
+
+            if (isAlert) {
+                cards.push(createMatchCard(league, "Uživo", homeTeam, awayTeam, `${homeScore}:${awayScore}`, alertReason));
+                sendNotification("Rukomet Radar Signal!", `${homeTeam} - ${awayTeam}. ${alertReason}`, gameId);
+            }
+        });
+        return cards;
+    }
+
+    function createMatchCard(league, meta, home, away, score, alertText) {
+        const card = document.createElement('div');
+        card.className = 'match-card';
+        card.innerHTML = `
+            <div class="match-meta">
+                <span>🏆 ${league}</span>
+                <span class="live-badge"><span class="radar-pulse"></span>${meta}</span>
+            </div>
+            <div class="match-teams">
+                <span class="team-name home">${home}</span>
+                <span class="score-box">${score}</span>
+                <span class="team-name away">${away}</span>
+            </div>
+            <div class="alert-box">${alertText}</div>
+        `;
+        return card;
     }
 
     if ('serviceWorker' in navigator) {
