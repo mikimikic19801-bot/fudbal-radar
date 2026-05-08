@@ -1,11 +1,11 @@
-const cacheName = 'radar-v2';
+const cacheName = 'fudbal-radar-v3';
 const assets = [
   './',
   'index.html',
   'manifest.json'
 ];
 
-// Instalacija keša
+// Instalacija keša i čuvanje osnovnih fajlova za offline rad
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(cacheName).then(cache => {
@@ -15,7 +15,7 @@ self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
-// Aktivacija i čišćenje starih keševa
+// Aktivacija i čišćenje starih verzija keša radi oslobađanja memorije
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys => {
@@ -31,14 +31,14 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-// Strategija: Mreža najpre, ako nema mreže onda keš
+// Strategija: Mreža ima prioritet (jer nam trebaju živi rezultati), a keš je tu kao rezerva
 self.addEventListener('fetch', e => {
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   );
 });
 
-// Rukovanje klikom na notifikaciju
+// Kada klikneš na notifikaciju na telefonu, ovaj kod otvara aplikaciju i stavlja je u prvi plan
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   e.waitUntil(
